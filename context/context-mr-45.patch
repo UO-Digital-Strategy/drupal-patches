@@ -1,0 +1,194 @@
+From 6eb012f62a5a2c4e18773d2388c572abd2015461 Mon Sep 17 00:00:00 2001
+From: Admir Ljubijankic <admir.ljubijankic@agiledrop.com>
+Date: Mon, 6 Nov 2023 10:08:38 +0100
+Subject: [PATCH 1/2] Add patch from #3171741
+
+Added the patch from older issue, since that was only merged in to that version of module and not dev branch.
+---
+ src/ContextServiceProvider.php | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ContextServiceProvider.php b/src/ContextServiceProvider.php
+index 832e88a..b166104 100644
+--- a/src/ContextServiceProvider.php
++++ b/src/ContextServiceProvider.php
+@@ -17,7 +17,7 @@ class ContextServiceProvider extends ServiceProviderBase {
+   public function alter(ContainerBuilder $container) {
+     // Override the menu active trail with a new class.
+     $definition = $container->getDefinition('menu.active_trail');
+-    if (!is_subclass_of($definition, 'Drupal\Core\Menu\MenuActiveTrail') && $definition instanceof MenuActiveTrail) {
++    if ($definition->getClass() == MenuActiveTrail::class) {
+       $definition->setClass('Drupal\context\ContextMenuActiveTrail');
+       $definition->addArgument($container->getDefinition('context.manager'));
+     }
+-- 
+GitLab
+
+
+From 20925f76408c6fa5a2ba5e0ad3dd96242ee2da55 Mon Sep 17 00:00:00 2001
+From: Amit Asaravala <amit@returncontrol.com>
+Date: Wed, 2 Oct 2024 17:38:52 -0700
+Subject: [PATCH 2/2] Add patch from #3171741-19 containing ProxyClass, plus
+ fix for warning message
+
+---
+ context.module                            |   2 +-
+ src/ProxyClass/ContextMenuActiveTrail.php | 133 ++++++++++++++++++++++
+ 2 files changed, 134 insertions(+), 1 deletion(-)
+ create mode 100644 src/ProxyClass/ContextMenuActiveTrail.php
+
+diff --git a/context.module b/context.module
+index 482b60b..1e5642a 100644
+--- a/context.module
++++ b/context.module
+@@ -9,7 +9,7 @@ use Drupal\Core\Render\Markup;
+ use Drupal\Core\Routing\RouteMatchInterface;
+ use Drupal\Component\Utility\NestedArray;
+ use Drupal\context\ContextInterface;
+-use Drupal\context\ContextMenuActiveTrail;
++use Drupal\context\ProxyClass\ContextMenuActiveTrail;
+ use Drupal\context\Plugin\ContextReaction\Blocks;
+ use Drupal\Core\Form\FormStateInterface;
+ 
+diff --git a/src/ProxyClass/ContextMenuActiveTrail.php b/src/ProxyClass/ContextMenuActiveTrail.php
+new file mode 100644
+index 0000000..cf841f6
+--- /dev/null
++++ b/src/ProxyClass/ContextMenuActiveTrail.php
+@@ -0,0 +1,133 @@
++<?php
++// phpcs:ignoreFile
++
++/**
++ * This file was generated via php core/scripts/generate-proxy-class.php 'Drupal\context\ContextMenuActiveTrail' "modules/contrib/context/src".
++ */
++
++namespace Drupal\context\ProxyClass {
++
++  /**
++   * Provides a proxy class for \Drupal\context\ContextMenuActiveTrail.
++   *
++   * @see \Drupal\Component\ProxyBuilder
++   */
++  class ContextMenuActiveTrail implements \Drupal\Core\Menu\MenuActiveTrailInterface, \Drupal\Core\DestructableInterface, \Drupal\Core\Cache\CacheCollectorInterface {
++
++    use \Drupal\Core\DependencyInjection\DependencySerializationTrait;
++
++    /**
++     * The id of the original proxied service.
++     *
++     * @var string
++     */
++    protected $drupalProxyOriginalServiceId;
++
++    /**
++     * The real proxied service, after it was lazy loaded.
++     *
++     * @var \Drupal\context\ContextMenuActiveTrail
++     */
++    protected $service;
++
++    /**
++     * The service container.
++     *
++     * @var \Symfony\Component\DependencyInjection\ContainerInterface
++     */
++    protected $container;
++
++    /**
++     * Constructs a ProxyClass Drupal proxy object.
++     *
++     * @param \Symfony\Component\DependencyInjection\ContainerInterface $container
++     *   The container.
++     * @param string $drupal_proxy_original_service_id
++     *   The service ID of the original service.
++     */
++    public function __construct(\Symfony\Component\DependencyInjection\ContainerInterface $container, $drupal_proxy_original_service_id) {
++      $this->container = $container;
++      $this->drupalProxyOriginalServiceId = $drupal_proxy_original_service_id;
++    }
++
++    /**
++     * Lazy loads the real service from the container.
++     *
++     * @return object
++     *   Returns the constructed real service.
++     */
++    protected function lazyLoadItself() {
++      if (!isset($this->service)) {
++        $this->service = $this->container->get($this->drupalProxyOriginalServiceId);
++      }
++
++      return $this->service;
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function getActiveLink($menu_name = NULL) {
++      return $this->lazyLoadItself()->getActiveLink($menu_name);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function getActiveTrailIds($menu_name) {
++      return $this->lazyLoadItself()->getActiveTrailIds($menu_name);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function has($key) {
++      return $this->lazyLoadItself()->has($key);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function get($key) {
++      return $this->lazyLoadItself()->get($key);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function set($key, $value) {
++      return $this->lazyLoadItself()->set($key, $value);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function delete($key) {
++      return $this->lazyLoadItself()->delete($key);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function reset() {
++      return $this->lazyLoadItself()->reset();
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function clear() {
++      return $this->lazyLoadItself()->clear();
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function destruct() {
++      return $this->lazyLoadItself()->destruct();
++    }
++
++  }
++
++}
++
+-- 
+GitLab
+

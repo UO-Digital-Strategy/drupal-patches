@@ -1,0 +1,35 @@
+--- a/src/ContextMenuActiveTrail.php
++++ b/src/ContextMenuActiveTrail.php
+@@ -22,9 +22,30 @@
+ 
+   /**
+    * {@inheritdoc}
++   *
++   * The arguments are deliberately variadic.
++   *
++   * ContextServiceProvider overrides the core "menu.active_trail" service and
++   * *appends* the context manager to whatever arguments core already passes,
++   * so the context manager is always the last argument but its position is
++   * not fixed. Drupal 11 added a fifth argument ($pathMatcher) to
++   * MenuActiveTrail::__construct(), which shifted the context manager from
++   * position 5 to position 6 and made a fixed signature fatal on every
++   * request:
++   *
++   *   TypeError: ContextMenuActiveTrail::__construct(): Argument #5
++   *   ($context_manager) must be of type ContextManager,
++   *   Drupal\path_alias\AliasPathMatcher given
++   *
++   * Popping the last argument and forwarding the rest keeps this working on
++   * Drupal 10 and 11 alike, and survives any further arguments core adds.
+    */
+-  public function __construct(MenuLinkManagerInterface $menu_link_manager, RouteMatchInterface $route_match, CacheBackendInterface $cache, LockBackendInterface $lock, ContextManager $context_manager) {
+-    parent::__construct($menu_link_manager, $route_match, $cache, $lock);
++  public function __construct(...$arguments) {
++    $context_manager = array_pop($arguments);
++    if (!$context_manager instanceof ContextManager) {
++      throw new \InvalidArgumentException('The last argument passed to ' . __CLASS__ . '::__construct() must be the context.manager service.');
++    }
++    parent::__construct(...$arguments);
+     $this->contextManager = $context_manager;
+   }
+ 

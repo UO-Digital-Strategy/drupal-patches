@@ -1,0 +1,57 @@
+diff --git a/entity_reference_revisions.views.inc b/entity_reference_revisions.views.inc
+index 6dd8ec6..c1fa3b3 100644
+--- a/entity_reference_revisions.views.inc
++++ b/entity_reference_revisions.views.inc
+@@ -67,6 +67,52 @@ function entity_reference_revisions_field_views_data(FieldStorageConfigInterface
+         ),
+       ),
+     );
++
++    // Provide a relationship for the entity type id with the entity reference id
++    // id field.
++    $args = [
++      '@label' => $target_entity_type->getLabel(),
++      '@field_name' => $field_name,
++    ];
++    $data[$table_name][$field_name]['relationship'] = [
++      'title' => t('By id: @label referenced from @field_name', $args),
++      'label' => t('By id: @field_name: @label', $args),
++      'group' => $entity_type->getLabel(),
++      'help' => t('By id: Appears in: @bundles.', ['@bundles' => implode(', ', $field_storage->getBundles())]),
++      'id' => 'standard',
++      'base' => $target_base_table,
++      'entity type' => $target_entity_type_id,
++      'base field' => $target_entity_type->getKey('id'),
++      'relationship field' => $field_name . '_target_id',
++    ];
++
++    // Provide a reverse relationship for the entity type id that is referenced by
++    // the field.
++    $args['@entity'] = $entity_type->getLabel();
++    $args['@label'] = $target_entity_type->getSingularLabel();
++    $pseudo_field_name = 'reverse__' . $entity_type_id . '__' . $field_name;
++    /** @var \Drupal\Core\Entity\Sql\DefaultTableMapping $table_mapping */
++    $table_mapping = $entity_manager->getStorage($entity_type_id)->getTableMapping();
++    $data[$target_base_table][$pseudo_field_name]['relationship'] = [
++      'title' => t('By id:  @entity using @field_name', $args),
++      'label' => t('By id:  @field_name', ['@field_name' => $field_name]),
++      'group' => $target_entity_type->getLabel(),
++      'help' => t('By id: Relate each @entity with a @field_name set to the @label.', $args),
++      'id' => 'entity_reverse',
++      'base' => $entity_type->getDataTable() ?: $entity_type->getBaseTable(),
++      'entity_type' => $entity_type_id,
++      'base field' => $entity_type->getKey('id'),
++      'field_name' => $field_name,
++      'field table' => $table_mapping->getDedicatedDataTableName($field_storage),
++      'field field' => $field_name . '_target_id',
++      'join_extra' => [
++        [
++          'field' => 'deleted',
++          'value' => 0,
++          'numeric' => TRUE,
++        ],
++      ],
++    ];
+   }
+ 
+   return $data;

@@ -1,0 +1,27 @@
+From e571f583f1ac616e568a9ed5418b5a1f2881da53 Mon Sep 17 00:00:00 2001
+From: Paul Kozik <pkozik@uoregon.edu>
+Date: Mon, 22 Jun 2020 13:43:17 -0700
+Subject: [PATCH] Removed update_last_removed hook due to issue with Aegir
+ platform updates.
+
+---
+ image_effects.install | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/image_effects.install b/image_effects.install
+index d885061..6f8a01a 100644
+--- a/image_effects.install
++++ b/image_effects.install
+@@ -27,10 +27,3 @@ function image_effects_requirements($phase) {
+
+   return $requirements;
+ }
+-
+-/**
+- * Minimum 2.x schema version to allow upgrading from.
+- */
+-function image_effects_update_last_removed(): int {
+-  return 8203;
+-}
+--
+2.26.2

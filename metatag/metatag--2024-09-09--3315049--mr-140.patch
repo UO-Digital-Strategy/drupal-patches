@@ -1,0 +1,431 @@
+diff --git a/README.md b/README.md
+index 5c1f750256ff1e49ef5a19a7e57c634abf291b59..5fdf547e42318a3f345c9d325b9effb018b4c2c3 100644
+--- a/README.md
++++ b/README.md
+@@ -164,6 +164,46 @@ e.g. the Favicon meta tags to be available for global configurations but to hide
+ them on entity forms.
+ 
+ 
++## Indexing meta tags with Search API
++
++The Search API integration allows indexing the meta tag values from a meta tag
++field on an entity bundle.
++
++
++### Limitations
++
++- This has not been tested with values stored in Schema.org data structures
++  from the Schema.org Metatag module.
++- Changing the global Metatag defaults will not trigger a reindex of the content
++  so this will need to be done separately.
++- By default meta tags will be added as "string" fields, which will not include
++  them in the keyword search index; their "Type" selection must be specifically
++  set to "Fulltext" in order for the meta tags to be included in the keyword
++  search index.
++
++
++### Setup
++
++To add meta tags to the Search API:
++
++- In the index configuration, modify the Processors section.
++- Enable the "Meta tags" option.
++- In the "Processor settings" section, set the "Data selection" option as
++  appropriate.
++- Select the meta tags that need to be indexed, e.g. "Basic" -> "Title",
++  "Description", etc.
++- Click "Save".
++- Open the Fields configuration section.
++- Click the "Add fields" button.
++- In the "Add fields to index [indexname]" popup, scroll down to find the
++  "Meta tags (search_api_metatag)" item; click the "Add" button.
++- Close the popup.
++- Look for the "Meta tags" fields in the table, change its "type" selector to
++  "Fulltext"; adjust the "Boost" value if desired.
++- Click "Save changes" at the bottom of the Fields admin page.
++- Reindex the content with the new settings.
++
++
+ ## Advanced usage
+ 
+ ### Programmatically assign meta tags to an entity
+diff --git a/composer.json b/composer.json
+index 5c807d8acd9d99a04c20ce707731cf443b20f9e8..ec28a7dcec1d4102a35f1ca0eb0987a5bed92648 100644
+--- a/composer.json
++++ b/composer.json
+@@ -29,6 +29,7 @@
+     "drupal/hal": "^1 || ^2 || ^9",
+     "drupal/page_manager": "^4.0",
+     "drupal/redirect": "^1.0",
++    "drupal/search_api": "^1.0",
+     "ergebnis/composer-normalize": "*",
+     "mpyw/phpunit-patch-serializable-comparison": "*"
+   },
+diff --git a/config/schema/metatag.search_api.schema.yml b/config/schema/metatag.search_api.schema.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..2081151f9a5569a52dba6845a2608c8110bc44b4
+--- /dev/null
++++ b/config/schema/metatag.search_api.schema.yml
+@@ -0,0 +1,16 @@
++# Integration with Search API.
++plugin.plugin_configuration.search_api_processor.metatag:
++  type: search_api.fields_processor_configuration
++  label: 'Metatag processor configuration'
++  mapping:
++    output_type:
++      type: string
++      label: 'Data selection'
++    # This structure is a nested array where the first level is the group name
++    # and the second level is the actual meta tag name.
++    tags:
++      type: sequence
++      sequence:
++        type: sequence
++        sequence:
++          type: metatag.metatag_tag.[%key]
+diff --git a/src/Plugin/search_api/processor/MetaTags.php b/src/Plugin/search_api/processor/MetaTags.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..c5d262bb79f12b6569f955f263fd6e711b096fb5
+--- /dev/null
++++ b/src/Plugin/search_api/processor/MetaTags.php
+@@ -0,0 +1,200 @@
++<?php
++
++namespace Drupal\metatag\Plugin\search_api\processor;
++
++use Drupal\Core\Entity\EntityInterface;
++use Drupal\Core\Form\FormStateInterface;
++use Drupal\Core\Plugin\PluginFormInterface;
++use Drupal\search_api\Datasource\DatasourceInterface;
++use Drupal\search_api\Item\ItemInterface;
++use Drupal\search_api\Plugin\PluginFormTrait;
++use Drupal\search_api\Processor\ProcessorPluginBase;
++use Drupal\search_api\Processor\ProcessorProperty;
++use Drupal\search_api\SearchApiException;
++
++/**
++ * Adds entity type to the indexed data.
++ *
++ * @SearchApiProcessor(
++ *   id = "metatag",
++ *   label = @Translation("Meta tags"),
++ *   description = @Translation("Adds the selected meta tags for the indexed entities."),
++ *   stages = {
++ *     "add_properties" = -20
++ *   },
++ *   locked = false,
++ *   hidden = false
++ * )
++ */
++class MetaTags extends ProcessorPluginBase implements PluginFormInterface {
++
++  use PluginFormTrait;
++
++  /**
++   * {@inheritdoc}
++   */
++  public function defaultConfiguration() {
++    return [
++      'output_type' => 'overrides',
++    ];
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
++    $form['output_type'] = [
++      '#type' => 'radios',
++      '#title' => $this->t('Data selection'),
++      '#options' => [
++        'overrides' => $this->t('Only meta tags overridden on this entity, no defaults'),
++        'all' => $this->t('All meta tags including defaults'),
++      ],
++      '#description' => $this->t('In both cases the meta tag values will have tokens processed, the only difference is whether meta tags that come from global configurations will also be included. Using the "overridden" option can avoid duplication of words that are already indexed from other fields.'),
++      '#default_value' => $this->configuration['output_type'] ?? 'overrides',
++      '#required' => TRUE,
++    ];
++
++    // Load all metatags as possible options for inclusion.
++    $form['tags'] = [
++      '#type' => 'container',
++    ];
++    foreach ($this->getAllTags() as $group_name => $group) {
++      $form['tags'][$group_name] = [
++        '#type' => 'details',
++        '#title' => $group['label'],
++        '#description' => $group['description'] ?? '',
++        '#open' => TRUE,
++      ];
++      foreach ($group['tags'] as $tag_name => $tag) {
++        $form['tags'][$group_name][$tag_name] = [
++          '#type' => 'checkbox',
++          '#title' => $tag['label'],
++          '#description' => $tag['description'] ?? '',
++          '#default_value' => $this->configuration['tags'][$group_name][$tag_name] ?? FALSE,
++        ];
++      }
++    }
++
++    return $form;
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function submitConfigurationForm(array &$form, FormStateInterface $form_state) {
++    $values = $form_state->getValues();
++    foreach ($values['tags'] as &$group) {
++      if (is_array($group)) {
++        $group = array_filter($group);
++      }
++    }
++    $values['tags'] = array_filter($values['tags']);
++    $this->setConfiguration($values);
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getPropertyDefinitions(DatasourceInterface $datasource = NULL): array {
++    $properties = [];
++
++    if ($datasource) {
++      // @todo Support other entity types.
++      $supported = [
++        'entity:node',
++        'entity:taxonomy_term',
++        'entity:user',
++      ];
++      if (in_array($datasource->getPluginId(), $supported)) {
++        $definition = [
++          'label' => 'Meta tags',
++          'description' => 'Selected meta tags from this entity.',
++          'type' => 'string',
++          'processor_id' => $this->getPluginId(),
++        ];
++        $properties['search_api_metatag'] = new ProcessorProperty($definition);
++      }
++    }
++
++    return $properties;
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function addFieldValues(ItemInterface $item) {
++    try {
++      $entity = $item->getOriginalObject()->getValue();
++    }
++    catch (SearchApiException $e) {
++      return;
++    }
++    if (!($entity instanceof EntityInterface)) {
++      return;
++    }
++
++    // No meta tags were selected on the settings form. Silly site admin.
++    if (empty($this->configuration)) {
++      return;
++    }
++
++    // Finished rendered output.
++    if ($this->configuration['output_type'] === 'all') {
++      $metatags = metatag_generate_entity_all_tags($entity);
++    }
++    // Just the per-entity overrides.
++    else {
++      $metatags = metatag_generate_entity_overrides($entity);
++    }
++
++    // If there are no meta tags to process there's nothing to do.
++    if (empty($metatags)) {
++      return;
++    }
++
++    $tag_definitions = \Drupal::service('plugin.manager.metatag.tag')->getDefinitions();
++
++    // Group all of the meta tag data in one property, rather than creating
++    // separate properties for each one.
++    $fields = $item->getFields(FALSE);
++    $fields = $this->getFieldsHelper()
++      ->filterForPropertyPath($fields, $item->getDatasourceId(), 'search_api_metatag');
++    foreach ($fields as $field) {
++      foreach ($this->getAllTags() as $group_name => $group) {
++        foreach ($group['tags'] as $tag_name => $tag) {
++          if (!empty($this->configuration['tags'][$group_name][$tag_name])) {
++            if (!empty($metatags[$tag_name])) {
++              if (!empty($metatags[$tag_name]['#attributes'])) {
++                $tag_object = new $tag_definitions[$tag_name]['class']([], $tag_name, $tag_definitions[$tag_name]);
++                $attribute_name = $tag_object->getHtmlValueAttribute();
++                if (!empty($metatags[$tag_name]['#attributes'][$attribute_name])) {
++                  if (is_array($metatags[$tag_name]['#attributes'][$attribute_name])) {
++                    $tag_output = implode(' ', $metatags[$tag_name]['#attributes'][$attribute_name]);
++                  }
++                  else {
++                    $tag_output = $metatags[$tag_name]['#attributes'][$attribute_name];
++                  }
++                  $field->addValue($tag_output);
++                }
++              }
++            }
++          }
++        }
++      }
++    }
++  }
++
++  /**
++   * Helper method to get array of metatags.
++   *
++   * @return array
++   *   A list of all meta tags enabled by the module.
++   */
++  protected function getAllTags() {
++    /** @var \Drupal\metatag\MetatagManager */
++    $tag_manager = \Drupal::service('metatag.manager');
++    return $tag_manager->sortedGroupsWithTags();
++  }
++
++}
+diff --git a/tests/src/Functional/SearchApiIntegration.php b/tests/src/Functional/SearchApiIntegration.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd8c7c8ed90cc5df57f373a06f37301c430754a8
+--- /dev/null
++++ b/tests/src/Functional/SearchApiIntegration.php
+@@ -0,0 +1,134 @@
++<?php
++
++namespace Drupal\Tests\metatag\Functional;
++
++use Drupal\Tests\BrowserTestBase;
++
++/**
++ * Ensures that the Search API integration works as expected.
++ *
++ * @group metatag
++ */
++class SearchApiIntegration extends BrowserTestBase {
++
++  // Contains helper methods.
++  use MetatagHelperTrait;
++
++  /**
++   * {@inheritdoc}
++   */
++  protected static $modules = [
++    // This module.
++    'metatag',
++
++    // Needed for the field UI testing.
++    'node',
++    'field_ui',
++    'views_ui',
++
++    // The Search API system includes this submodule that makes a lot of pieces
++    // ready to go.
++    'search_api_db_defaults',
++  ];
++
++  /**
++   * {@inheritdoc}
++   */
++  protected $defaultTheme = 'stark';
++
++  /**
++   * Use the standard installer so that the default content types are available.
++   *
++   * This ensures that the Search API DB Defaults module has the expected
++   * configuration.
++   *
++   * {@inheritdoc}
++   */
++  protected $profile = 'standard';
++
++  /**
++   * {@inheritdoc}
++   */
++  protected function setUp(): void {
++    parent::setUp();
++
++    // Log in as user 1.
++    $this->loginUser1();
++
++    // Add the Metatag field to the content type.
++    $this->drupalGet('admin/structure/types/manage/page/fields/add-field');
++    $this->assertSession()->statusCodeEquals(200);
++    $edit = [
++      'label' => 'Metatag',
++      'field_name' => 'metatag',
++      'new_storage_type' => 'metatag',
++    ];
++    $this->submitForm($edit, 'Save and continue');
++    $this->submitForm([], 'Save field settings');
++    $this->assertSession()->statusCodeEquals(200);
++
++    // Load the Search API configuration.
++    $config = $this->config('search_api.index.default_index');
++
++    // Add the Metatag configuration.
++    $values = $config->get('processor_settings');
++    $values['metatag'] = [
++      // This checks all of the output, including the defaults.
++      'output_type' => 'all',
++      'tags' => [
++        'basic' => [
++          'title' => TRUE,
++          'description' => TRUE,
++        ],
++      ],
++    ];
++    $config->set('processor_settings', $values);
++
++    // Add the Metatag field to the index.
++    $values = $config->get('field_settings');
++    $values['metatag'] = [
++      'label' => 'Meta tags',
++      'datasource_id' => 'entity:node',
++      'property_path' => 'search_api_metatag',
++      'type' => 'text',
++    ];
++    $config->set('field_settings', $values);
++    $config->save();
++
++    $this->drupalGet('admin/config/search/search-api/index/default_index/fields');
++    $this->drupalGet('admin/config/search/search-api/index/default_index/processors');
++  }
++
++  /**
++   * Tests the Search API system adds Metatag.
++   */
++  public function testSearchApi() {
++    // Create a node.
++    $this->drupalGet('node/add/page');
++    $this->assertSession()->statusCodeEquals(200);
++    $edit = [
++      'title[0][value]' => 'Testing Search API',
++      'field_metatag[0][basic][title]' => 'mango passion fruit test',
++      'field_metatag[0][basic][description]' => 'Something goes here',
++    ];
++    $this->submitForm($edit, 'Save');
++    $this->assertSession()->statusCodeEquals(200);
++
++    // Verify the data for the node.
++    $node = $this->getNodeByTitle('Testing Search API');
++    $metatags = metatag_generate_entity_overrides($node);
++    print_r($metatags);
++
++    // @todo Look into why the content isn't indexed immediately.
++    $this->drupalGet('admin/config/search/search-api/index/default_index');
++    $this->submitForm([], 'Index now');
++
++    // Search for the node.
++    $this->drupalGet('search/content');
++    $this->assertSession()->statusCodeEquals(200);
++    $this->submitForm(['keys' => 'mango'], 'Search');
++    $this->assertSession()->statusCodeEquals(200);
++    $this->assertSession()->pageTextContains('Testing Search API');
++  }
++
++}
