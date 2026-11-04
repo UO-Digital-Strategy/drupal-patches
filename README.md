@@ -26,11 +26,13 @@ changing a patch is a new commit here, then a new substream release pointing at 
 
 ## Contents
 
-Every file is byte-identical to its original source.
+Every file is byte-identical to its original source, except the one marked **reroll**, which is
+derived from an original as described in its row.
 
 | Project | Applies to | File | Original source | sha256 |
 |---|---|---|---|---|
 | metatag | 2.2.0 | `metatag/metatag--2024-09-09--3315049--mr-140.patch` | https://www.drupal.org/files/issues/2024-09-09/metatag--2024-09-09--3315049--mr-140.patch (#3315049, MR !140) | `78218716fda4a22c73bf0c7cfcf0a6cd40d6db94394a3ecb3c81add2d57b9575` |
+| metatag | 2.2.5 | `metatag/metatag-2.2.5--3315049--mr-140.patch` | **reroll** of the 2.2.0 patch above for metatag 2.2.5. Drops the hunk that adds `drupal/search_api` to metatag's own `require-dev`, which no longer applies on 2.2.5 and has no effect on sites. The three files it creates are byte-identical to the original's. | `ca3bfda3d01ea28b00e94031f75e329ae66644766bfa0fb0480729604ed4785c` |
 | entity_reference_revisions | 1.14 | `entity_reference_revisions/2799479-163-relationship-host-id.patch` | https://www.drupal.org/files/issues/2021-11-12/2799479-163-relationship-host-id.patch (#2799479) | `727b3a48739f5d1f608392b6b57b2fa82e0998da40822f7d42bf71ab0c57d3bf` |
 | menu_condition | 2.0 | `menu_condition/menu_condition-add_negate_option.patch` | https://www.drupal.org/files/issues/2020-10-08/menu_condition-add_negate_option.patch | `8e2bdf11476599d53eac09667d8b29a09e937092be2d063ea91835b4a42813d7` |
 | context | 5.0.0-rc2 | `context/context-mr-45.patch` | https://git.drupalcode.org/project/context/-/merge_requests/45.patch (MR !45, as of 2026-10-23) | `11845ab7c415e8528ebea998cbca9e98f6388a284d5ee32f855473cc6a60d061` |
